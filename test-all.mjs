@@ -5037,6 +5037,7 @@ try {
       role_title: 'Head of Applied AI',
       opening: 'OPENING_MARKER sentence.',
       profile_intro: 'Profile intro.',
+      date: '1st January 2026',
     },
   };
 
@@ -5095,6 +5096,7 @@ try {
       role_title: 'Engineer',
       opening: 'See {{FOOTNOTES_BLOCK}} and {{CLOSING_BLOCK}} markers.',
       profile_intro: 'Intro.',
+      date: '1st January 2026',
     },
   });
 

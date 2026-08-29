@@ -44,6 +44,15 @@ function escapeHtml(text) {
     .replace(/'/g, "&#39;");
 }
 
+// Same as escapeHtml, but preserves embedded newlines (e.g. a closing block
+// like "Sincerely,\nJane Doe") as visible line breaks. Plain escapeHtml leaves
+// \n as a literal newline in the HTML source, which browsers/Chromium collapse
+// to a single space at render time, so a two-line sign-off silently merges
+// onto one line in the PDF.
+function escapeHtmlWithBreaks(text) {
+  return escapeHtml(text).replace(/\n/g, "<br>");
+}
+
 function asUrl(value) {
   return /^https?:\/\//i.test(value) ? value : `https://${value}`;
 }
@@ -70,11 +79,6 @@ function buildCredentialsBlock(candidate) {
   const credentials = candidate.credentials || [];
   if (!credentials.length) return "";
   return `<div class="credentials">${credentials.map(escapeHtml).join(" &nbsp;|&nbsp; ")}</div>`;
-}
-
-function buildDateline(letter) {
-  const parts = [letter.company, letter.city, letter.date].filter(Boolean).map(escapeHtml);
-  return parts.join(" &nbsp;&nbsp; ");
 }
 
 function buildAchievementsBlock(achievements) {
@@ -108,7 +112,7 @@ export function buildHtml(payload) {
   const candidate = payload.candidate;
   const letter = payload.letter;
   _require(candidate, ["name"], "candidate");
-  _require(letter, ["role_title", "opening", "profile_intro"], "letter");
+  _require(letter, ["role_title", "opening", "profile_intro", "date"], "letter");
 
   const scriptDir = dirname(fileURLToPath(import.meta.url));
   const templatePath = resolve(scriptDir, "templates", "cover-letter-template.html");
@@ -117,21 +121,21 @@ export function buildHtml(payload) {
   // Optional salutation (e.g. "Dear Jane Smith,"). Omitted -> no salutation,
   // preserving the original behavior for payloads that don't set it.
   const greetingBlock = letter.greeting ? `<p class="greeting">${escapeHtml(letter.greeting)}</p>` : "";
-  const closingBlock = letter.closing ? `<p>${escapeHtml(letter.closing)}</p>` : "";
+  const closingBlock = letter.closing ? `<p>${escapeHtmlWithBreaks(letter.closing)}</p>` : "";
   const languageClosingBlock = letter.language_closing
     ? `<p class="language-closing">${escapeHtml(letter.language_closing)}</p>`
     : "";
-  const problemsBlock = letter.problems_section ? `<p>${escapeHtml(letter.problems_section)}</p>` : "";
+  const problemsBlock = letter.problems_section ? `<p>${escapeHtmlWithBreaks(letter.problems_section)}</p>` : "";
 
   const replacements = {
     "{{NAME}}": escapeHtml(candidate.name),
     "{{CONTACT_LINE}}": buildContactLine(candidate),
     "{{CREDENTIALS_BLOCK}}": buildCredentialsBlock(candidate),
     "{{ROLE_TITLE}}": escapeHtml(letter.role_title),
-    "{{DATELINE}}": buildDateline(letter),
+    "{{DATELINE}}": escapeHtml(letter.date),
     "{{GREETING_BLOCK}}": greetingBlock,
-    "{{OPENING}}": escapeHtml(letter.opening),
-    "{{PROFILE_INTRO}}": escapeHtml(letter.profile_intro),
+    "{{OPENING}}": escapeHtmlWithBreaks(letter.opening),
+    "{{PROFILE_INTRO}}": escapeHtmlWithBreaks(letter.profile_intro),
     "{{ACHIEVEMENTS_BLOCK}}": buildAchievementsBlock(letter.achievements),
     "{{PROBLEMS_BLOCK}}": problemsBlock,
     "{{CLOSING_BLOCK}}": closingBlock,
@@ -196,7 +200,7 @@ Usage:
   try {
     const html = buildHtml(payload);
     const outputPath = resolve(payload.output_path);
-    await renderHtmlToPdf(html, outputPath, { format: "a4" });
+    await renderHtmlToPdf(html, outputPath, { format: "letter" });
     console.log(`\nCover letter PDF: ${payload.output_path}`);
   } catch (err) {
     console.error("ERROR generating cover letter PDF:");
