@@ -40,6 +40,42 @@ try {
     fail('ashby.detect() should return null when careers_url is absent');
   }
 
+  // detect() — api: takes precedence over careers_url and is used verbatim
+  // when its host is on the allowlist. Lets an entry keep a human-facing
+  // corporate careers_url (e.g. https://openai.com/careers) while pinning
+  // the Ashby board explicitly.
+  const hitApi = ashby.detect({
+    name: 'Pinned',
+    careers_url: 'https://openai.com/careers',
+    api: 'https://api.ashbyhq.com/posting-api/job-board/openai?includeCompensation=true',
+  });
+  if (hitApi && hitApi.url === 'https://api.ashbyhq.com/posting-api/job-board/openai?includeCompensation=true') {
+    pass('ashby.detect() honors an allowlisted api: over a branded careers_url');
+  } else {
+    fail(`ashby.detect(api-pinned) returned ${JSON.stringify(hitApi)}`);
+  }
+
+  // detect() — api: with an untrusted host must NOT be claimed (SSRF guard).
+  if (ashby.detect({ name: 'Evil', api: 'https://evil.example/posting-api/job-board/acme' }) === null) {
+    pass('ashby.detect() returns null for an api: on an untrusted host');
+  } else {
+    fail('ashby.detect() must reject an untrusted api: host');
+  }
+
+  // detect() — api: must be HTTPS.
+  if (ashby.detect({ name: 'Insecure', api: 'http://api.ashbyhq.com/posting-api/job-board/acme' }) === null) {
+    pass('ashby.detect() returns null for a non-HTTPS api:');
+  } else {
+    fail('ashby.detect() must reject an http:// api:');
+  }
+
+  // detect() — malformed api: URL → null, not a crash.
+  if (ashby.detect({ name: 'Broken', api: 'not a url' }) === null) {
+    pass('ashby.detect() returns null for a malformed api: URL');
+  } else {
+    fail('ashby.detect() must reject a malformed api: URL');
+  }
+
   // parseCompensation() — annualization, coercion, and rejection paths.
   const annual = parseCompensation({ compensation: { interval: '1 YEAR', minValue: 90000, maxValue: 120000, currency: 'usd' } });
   if (annual && annual.min === 90000 && annual.max === 120000 && annual.currency === 'USD') {
@@ -152,6 +188,42 @@ try {
     pass('ashby.fetch() folds secondaryLocations (region/locality/country) into location, deduped, " · "-joined');
   else fail(`ashby.fetch() row 0 location = ${JSON.stringify(fetched[0]?.location)}`);
 
+  // Remote work model — `workplaceType` / `isRemote` live outside `location`,
+  // which keeps naming the office city on a fully remote posting. Without
+  // folding them in, a location_filter blocking that city silently drops a
+  // remote role. `workplaceType` is authoritative when present; `isRemote` is
+  // the fallback. See formatLocation() in providers/ashby.mjs.
+  const workModel = await ashby.fetch(
+    { name: 'Acme', careers_url: 'https://jobs.ashbyhq.com/acme' },
+    {
+      fetchJson: async () => ({
+        jobs: [
+          { title: 'Remote via workplaceType', location: 'San Francisco', isRemote: true, workplaceType: 'Remote' },
+          { title: 'Hybrid despite isRemote', location: 'New York', isRemote: true, workplaceType: 'Hybrid' },
+          { title: 'Onsite', location: 'Austin', isRemote: false, workplaceType: 'Onsite' },
+          { title: 'isRemote fallback, no workplaceType', location: 'Seattle', isRemote: true },
+          { title: 'Already says remote', location: 'Remote - US', isRemote: true, workplaceType: 'Remote' },
+          { title: 'Blank workplaceType falls back', location: 'Denver', isRemote: true, workplaceType: '   ' },
+        ],
+      }),
+    },
+  );
+
+  const workModelExpected = [
+    'San Francisco · Remote',
+    'New York',
+    'Austin',
+    'Seattle · Remote',
+    'Remote - US',
+    'Denver · Remote',
+  ];
+  const workModelActual = workModel.map((r) => r.location);
+  if (JSON.stringify(workModelActual) === JSON.stringify(workModelExpected)) {
+    pass('ashby.fetch() appends "Remote" from workplaceType/isRemote; workplaceType wins over isRemote; no duplicate "Remote"');
+  } else {
+    fail(`ashby.fetch() work-model locations = ${JSON.stringify(workModelActual)} (expected ${JSON.stringify(workModelExpected)})`);
+  }
+
   if (fetched[1]?.title === '' && fetched[1]?.url === '' && fetched[1]?.location === ''
       && fetched[1]?.salary === null && fetched[1]?.postedAt === undefined)
     pass('ashby.fetch() tolerates a sparse job (empty strings, null salary, undefined postedAt for a bad date)');
@@ -208,6 +280,34 @@ try {
     }
   }
 
+  // fetch() — a pinned api: is used verbatim, bypassing careers_url parsing entirely.
+  let pinnedUrl = null;
+  await ashby.fetch(
+    { name: 'OpenAI', careers_url: 'https://openai.com/careers', api: 'https://api.ashbyhq.com/posting-api/job-board/openai?includeCompensation=true' },
+    { fetchJson: async (url) => { pinnedUrl = url; return { jobs: [] }; } },
+  );
+  if (pinnedUrl === 'https://api.ashbyhq.com/posting-api/job-board/openai?includeCompensation=true') {
+    pass('ashby.fetch() honors a pinned api: over a non-ashby careers_url');
+  } else {
+    fail(`ashby.fetch() pinned api: requested ${JSON.stringify(pinnedUrl)}`);
+  }
+
+  // fetch() — an untrusted api: host throws before any request (SSRF guard).
+  let evilFetchCalled = false;
+  try {
+    await ashby.fetch(
+      { name: 'Evil', api: 'https://evil.example/posting-api/job-board/acme' },
+      { fetchJson: async () => { evilFetchCalled = true; return { jobs: [] }; } },
+    );
+    fail('ashby.fetch() should throw for an untrusted api: host');
+  } catch (e) {
+    if (!evilFetchCalled && /untrusted hostname/.test(e.message)) {
+      pass('ashby.fetch() rejects an untrusted api: host before fetching');
+    } else {
+      fail(`ashby.fetch() untrusted api: fetchCalled=${evilFetchCalled}, error=${e.message}`);
+    }
+  }
+
   // Underivable entry → typed error before any request (and before the retry loop).
   let underiveFetchCalled = false;
   try {
@@ -222,6 +322,33 @@ try {
     } else {
       fail(`ashby.fetch() underivable entry: fetchCalled=${underiveFetchCalled}, error=${e.message}`);
     }
+  }
+
+  // ── Description (#3175 phase 2) ──
+  // Ashby's posting-api list ships descriptionPlain for free (same payload,
+  // no per-job request) — mapped verbatim, mirroring lever. A non-string
+  // value degrades to '' rather than leaking a wrong type into the pipeline.
+  const withDesc = await ashby.fetch(
+    { name: 'Acme', careers_url: 'https://jobs.ashbyhq.com/acme' },
+    {
+      fetchJson: async () => ({
+        jobs: [
+          { title: 'Writer', jobUrl: 'https://jobs.ashbyhq.com/acme/w1', descriptionPlain: 'Own the blog.\nShip weekly.' },
+          { title: 'No body' },
+          { title: 'Bad body', descriptionPlain: 42 },
+        ],
+      }),
+    },
+  );
+  if (withDesc[0]?.description === 'Own the blog.\nShip weekly.') {
+    pass('ashby.fetch() carries descriptionPlain through untouched when it is a string');
+  } else {
+    fail(`row 0 description = ${JSON.stringify(withDesc[0]?.description)}`);
+  }
+  if (withDesc[1]?.description === '' && withDesc[2]?.description === '') {
+    pass('ashby.fetch() emits "" for a missing / non-string descriptionPlain');
+  } else {
+    fail(`descriptions = ${JSON.stringify([withDesc[1]?.description, withDesc[2]?.description])}`);
   }
 
 } catch (e) {
