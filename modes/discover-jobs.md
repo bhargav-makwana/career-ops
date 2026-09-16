@@ -84,16 +84,29 @@ query variety for this cycle — in that case report the honest, smaller
 number in the end-of-run log entry rather than padding with weak matches.
 Never lower the hard-filter bar (Step 3) to reach the number.
 
+**A title/snippet is never enough to apply Step 3's filters — you need the
+actual job description body.** A snippet can't tell you the real years-required
+number, the full required-tools list, or the language requirement buried
+mid-posting; guessing from it risks including a posting that would fail a
+hard filter on a full read. For every candidate that survives a first
+title-level skim, fetch its real JD body with WebFetch.
+
 **WebFetch may be blocked in the cloud routine** (`EGRESS_BLOCKED` — a
 network-egress policy on this environment, not fixable from within the
-session). If a WebFetch call returns that error, don't retry it — judge the
-posting from the WebSearch result's own title/snippet text instead. Only
-WebSearch is guaranteed to work in the cloud path.
+session). If it is: try the posting's ATS JSON API directly via `Bash`
+(`curl`/`fetch`) if it's an ATS-hosted posting (Greenhouse/Lever/Ashby —
+same approach as `check-liveness.mjs`'s API rung); if that also fails
+(likely the same network policy), **skip the candidate — do not judge it
+from the WebSearch title/snippet alone.** An unconfirmed candidate is a
+candidate to exclude, per Step 3's own "never include with a caveat" rule —
+finding fewer than 10 genuinely-verified postings this run is the correct,
+honest outcome, not a shortfall to paper over with a guess.
 
 ## Step 3: Apply hard filters
 
-For each candidate, apply the hard filters from `modes/_profile.md` exactly as
-written there (read that file now, don't rely on a cached summary):
+For each candidate whose real JD body you read in Step 2, apply the hard
+filters from `modes/_profile.md` exactly as written there (read that file
+now, don't rely on a cached summary):
 
 - **Your Experience & Skill-Stack Fit (HARD FILTER)** — 5+ years required, or
   2+ required modern-data-stack tools (dbt, Snowflake, BigQuery, Redshift,
