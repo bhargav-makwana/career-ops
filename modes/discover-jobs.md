@@ -10,49 +10,38 @@ titles — and adds genuinely new ones to the hosted tracker. Runs both as a
 7-hourly autonomous cloud routine and as a mode you can invoke manually in an
 interactive session; the same instructions below cover both.
 
-## Step 0: Activity log — write as you go, in plain language
+## Step 0: Activity log — minimal, token-efficient
 
-The tracker artifact also holds a live `activity_log` collection the user
-watches from any device while a run is happening. Log a short, plain-English
-entry (no jargon, no tool names, no raw counts dumped without context) via
-`ArtifactData` `set` at each milestone below — not batched at the end, write
-each one the moment it happens, so the log is genuinely real-time:
+The tracker artifact holds a live `activity_log` collection the user checks
+from any device. **Write exactly 2 entries per run, never more** — every
+extra entry is an extra tool call and extra tokens, and this mode runs
+autonomously many times a day, so verbosity here has a real ongoing cost:
 
-1. Run started
-2. Keyword set built (name how many keywords, not the tool call)
-3. Search complete (how many candidate postings found)
-4. Filters applied (how many passed, in plain terms — never dump the
-   exclusion list, per the tracker's own "never overwhelm with excluded
-   items" convention)
-5. Dedup complete (how many were genuinely new)
-6. Rows written (or "no new postings this run" — a legitimate, non-error
-   outcome)
-7. Run finished — or, if blocked (e.g. missing `cv.md`/`modes/_profile.md`),
-   one clear entry saying what's missing and that nothing was written
+1. **At the start:** one entry, e.g. `"Run started"`.
+2. **At the end:** one entry summarizing the whole run in one line, e.g.
+   `"Found 10 new postings (32 searched, 14 already applied/known, 8 failed a
+   filter)"` or, if blocked, the reason nothing ran (e.g. `"Blocked — cv.md
+   missing from this clone"`).
 
-Each entry is one document in collection `activity_log`, fresh `doc_id` (use
-the run's start time in epoch milliseconds plus a small counter, e.g.
-`1758000000000-3`, so entries never collide and sort correctly), fields:
+No per-search, no per-exclusion, no per-filter entries. If something needs
+explaining beyond one line, it belongs in that posting's own tracker row, not
+the log.
+
+Each entry: one document in collection `activity_log`, fresh `doc_id` (run
+start time in epoch ms plus a counter, e.g. `1758000000000-1`), fields:
 
 ```json
 {
   "ts_iso": "2026-09-16T07:52:03Z",
-  "ts_berlin": "2026-09-16 09:52 CEST",
   "ts_berlin_short": "09:52",
-  "message": "Found 14 candidate postings from today's search"
+  "message": "Found 10 new postings (32 searched, 14 already known, 8 filtered out)"
 }
 ```
 
-Compute Berlin time with `TZ='Europe/Berlin' date '+%Y-%m-%d %H:%M %Z'`
-(handles CET/CEST automatically) — never hardcode a UTC offset.
-
-**Keep it clean:** one sentence per entry, plain language a non-technical
-reader follows at a glance, newest-first is how the page renders it so don't
-repeat context already implied by the previous entry. After writing, if the
-`activity_log` collection has grown past 200 documents, delete the oldest
-ones back down to 200 (`list` ordered by `ts_iso` ascending, `delete` the
-overflow) — keeps the log itself the size the user actually reads, not an
-unbounded history.
+Compute Berlin time with `TZ='Europe/Berlin' date '+%H:%M'` (handles
+CET/CEST automatically). After writing the end-of-run entry, if
+`activity_log` has grown past 50 documents, delete the oldest back down to
+50 — this log is a quick pulse-check, not a history.
 
 ## Step 1: Build the query keyword set
 
@@ -66,7 +55,7 @@ for "Business Analyst" or "Data Quality Analyst" as a phrase) — those live in
 `config/profile.yml` → `target_roles` and `modes/_profile.md` for CV/cover-letter
 framing only, not for discovery.
 
-## Step 2: Search — tool-availability-aware
+## Step 2: Search — tool-availability-aware, keep going until the target is met
 
 Check which search tool is available in the current session:
 
@@ -82,9 +71,24 @@ Check which search tool is available in the current session:
   `SQL "data quality" Berlin jobs`), and merge/dedupe the results yourself
   within this run.
 
-Either path should aim for up to ~20 net-new (post-dedup, post-filter)
-qualifying postings per run, when that many genuinely exist — never pad the
-list with weaker matches to hit the number.
+**Target: 10 genuinely new (post-filter, post-dedup) qualifying postings per
+run — keep searching until you reach it, not just one shallow pass.** Vary
+the query: different keyword combinations, different `site:` boards
+(stepstone.de, linkedin.com, indeed.com, glassdoor.com, xing.com), different
+phrasing. A single pass of ~10 searches is rarely enough — expect to run
+20-40 before reaching 10 real net-new candidates, since most raw hits are
+aggregator/category pages (Glassdoor/Indeed "N jobs in Berlin" listings, not
+individual postings) or turn out to already be known (Step 4). Stop only when
+you hit 10, or you've run ~40 searches and genuinely exhausted reasonable
+query variety for this cycle — in that case report the honest, smaller
+number in the end-of-run log entry rather than padding with weak matches.
+Never lower the hard-filter bar (Step 3) to reach the number.
+
+**WebFetch may be blocked in the cloud routine** (`EGRESS_BLOCKED` — a
+network-egress policy on this environment, not fixable from within the
+session). If a WebFetch call returns that error, don't retry it — judge the
+posting from the WebSearch result's own title/snippet text instead. Only
+WebSearch is guaranteed to work in the cloud path.
 
 ## Step 3: Apply hard filters
 
@@ -106,12 +110,28 @@ These are hard excludes. Do not score anything at this stage and do not
 include a candidate "with a caveat" — a caveat worth writing down is a reason
 to exclude, not a reason to include.
 
-## Step 4: Dedup against the existing tracker
+## Step 4: Exclude anything already known — two sources, both mandatory
 
-Read the current tracker (see Step 5). Before adding a candidate, check
-whether a document with the same **(company, job title)** pair already exists
-(case-insensitive, whitespace-normalized). If it does, skip it — do not add a
-duplicate row, and do not touch that row's existing Status.
+A candidate is "already known" (never add it, regardless of how good a fit
+it looks) if it matches either of these, by **company** (case-insensitive,
+whitespace-normalized — a title match isn't required, since re-surfacing the
+same company under a reworded title is exactly the noise this check exists
+to catch):
+
+1. **`data/applications.md`** — the user's real, authoritative application
+   history. Read every row's Company column, every status included (not just
+   "Applied" — an `Evaluated`/`SKIP`/`Rejected` company was already looked at
+   and decided on, so it's not a fresh discovery either). This is the
+   critical check: the hosted tracker below starts empty on day one and has
+   no memory of anything applied to before `discover-jobs` existed, so
+   skipping this step re-surfaces companies the user already interviewed
+   with and was rejected from.
+2. **The hosted tracker's own `postings` collection** (Step 5) — a
+   **(company, job title)** pair already present there from a prior
+   `discover-jobs` run.
+
+Check both before adding anything. If a candidate matches either, skip it
+silently — don't log it, don't add it, don't touch any existing row's Status.
 
 ## Step 5: Write new rows to the hosted tracker
 
