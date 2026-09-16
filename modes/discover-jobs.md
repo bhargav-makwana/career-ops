@@ -66,13 +66,17 @@ Check which search tool is available in the current session:
   matching the keyword set from Step 1, for a mid-level (~3-4 years)
   candidate. Poll for the result.
 - **Otherwise** (true in the cloud routine, which has no Nimble connector):
-  use the built-in WebSearch tool, once per keyword or small keyword group
-  (e.g. `"SAP MDG" OR "SAP S/4HANA" jobs Germany site:stepstone.de`,
-  `SQL "data quality" jobs Germany remote`), and merge/dedupe the results
-  yourself within this run. Vary the location term across queries too —
-  Berlin, Germany-wide, "remote Germany", "EU remote" — per
-  `modes/_profile.md`'s Location Policy, none of these is preferred over
-  another, so don't default every query to "Berlin".
+  use the built-in WebSearch tool with **short, broad queries — 2-3 terms,
+  never a long compound query.** Pair one skill/tool term from Step 1 with
+  one broad qualifier (`Germany` or `English`), nothing more: `SQL Master
+  Data Germany`, `SQL Germany English`, `Master Data English`, `SAP S/4HANA
+  English`, `Databricks Germany`, `Power BI Germany English`. **Do not**
+  stack `site:`, multiple `OR`s, and location/remote/English all into one
+  query (`"SAP MDG" OR "SAP S/4HANA" jobs Germany site:stepstone.de remote
+  English` returns nothing) — a query that specific filters before you ever
+  see results, which is backwards. Search broad, get many raw hits, merge
+  and dedupe them yourself, then let Step 3 (which now includes the Location
+  Policy hard filter) do the real narrowing on each candidate's actual JD.
 
 **Target: 10 genuinely new (post-filter, post-dedup) qualifying postings per
 run — keep searching until you reach it, not just one shallow pass.** Vary
