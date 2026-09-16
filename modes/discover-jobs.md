@@ -114,10 +114,11 @@ now, don't rely on a cached summary):
 - **Your Language Policy (HARD FILTER)** — English working language required;
   German-fluency requirement → exclude; all-German posting with zero language
   signal → exclude.
-- **Your Company Policy (HARD FILTER)** — consulting/IT-services/staffing
-  blocklist → exclude the employer, not the posting, if it's an
-  agency-sourced listing for an undisclosed end employer (see that section's
-  distinction).
+- **Your Company Policy** — no company-category exclusion (changed
+  2026-09-16: consulting/IT-services/staffing firms are evaluated like any
+  other company now). Only the Language Policy above can exclude one of
+  these, on the same terms as any posting — read its actual language
+  requirement carefully rather than excluding on the company's name alone.
 
 These are hard excludes. Do not score anything at this stage and do not
 include a candidate "with a caveat" — a caveat worth writing down is a reason
