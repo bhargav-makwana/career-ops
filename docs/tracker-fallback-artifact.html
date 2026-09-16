@@ -1,0 +1,359 @@
+<title>Job Discovery Tracker</title>
+<style>
+  :root {
+    --bg: #f5f6f4;
+    --surface: #ffffff;
+    --surface-alt: #eef1ee;
+    --border: #dde2dd;
+    --text: #1b211f;
+    --text-dim: #5c6663;
+    --accent: #2f6f62;
+    --accent-contrast: #ffffff;
+    --accent-soft: #e2efec;
+    --status-na-bg: #eceef0; --status-na-fg: #4b5563;
+    --status-applied-bg: #e3edfb; --status-applied-fg: #1d4ed8;
+    --status-interview-bg: #fdf1d8; --status-interview-fg: #92660a;
+    --status-rejected-bg: #fbe4e2; --status-rejected-fg: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14181a;
+      --surface: #1c2224;
+      --surface-alt: #222a2c;
+      --border: #2c3436;
+      --text: #e7ebe9;
+      --text-dim: #9aa5a2;
+      --accent: #5fb3a1;
+      --accent-contrast: #0c1211;
+      --accent-soft: #1d3630;
+      --status-na-bg: #2a3134; --status-na-fg: #b9c2c0;
+      --status-applied-bg: #17324f; --status-applied-fg: #8ab4f8;
+      --status-interview-bg: #3a2e10; --status-interview-fg: #f0c76a;
+      --status-rejected-bg: #3a1f1d; --status-rejected-fg: #f2a39c;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14181a;
+    --surface: #1c2224;
+    --surface-alt: #222a2c;
+    --border: #2c3436;
+    --text: #e7ebe9;
+    --text-dim: #9aa5a2;
+    --accent: #5fb3a1;
+    --accent-contrast: #0c1211;
+    --accent-soft: #1d3630;
+    --status-na-bg: #2a3134; --status-na-fg: #b9c2c0;
+    --status-applied-bg: #17324f; --status-applied-fg: #8ab4f8;
+    --status-interview-bg: #3a2e10; --status-interview-fg: #f0c76a;
+    --status-rejected-bg: #3a1f1d; --status-rejected-fg: #f2a39c;
+  }
+
+  @font-face {
+    font-family: "Manrope";
+    src: local("Manrope");
+  }
+
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--text); }
+  body {
+    font-family: "Manrope", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    padding-inline: 20px;
+    padding-block: 28px;
+    max-width: 1040px;
+    margin-inline: auto;
+  }
+  .mono { font-family: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace; font-variant-numeric: tabular-nums; }
+
+  header { margin-bottom: 22px; }
+  h1 { font-size: 1.5rem; font-weight: 800; margin: 0 0 4px; letter-spacing: -0.01em; text-wrap: balance; }
+  .subtitle { color: var(--text-dim); font-size: 0.92rem; margin: 0; }
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+  .stat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .stat .n { font-size: 1.5rem; font-weight: 800; }
+  .stat .n.mono { display: block; }
+  .stat .l { font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
+
+  section { margin-bottom: 28px; }
+  .section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  h2 { font-size: 1rem; font-weight: 700; margin: 0; }
+  .hint { font-size: 0.78rem; color: var(--text-dim); }
+
+  .table-wrap {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--surface);
+  }
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 640px; }
+  th, td {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.88rem;
+    vertical-align: middle;
+  }
+  thead th {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-dim);
+    background: var(--surface-alt);
+    font-weight: 700;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--surface-alt); }
+  td.num { color: var(--text-dim); width: 3ch; }
+  td.company { color: var(--text-dim); }
+  td.fetched { color: var(--text-dim); white-space: nowrap; }
+
+  select.status {
+    appearance: none;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    padding: 5px 26px 5px 12px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    background-repeat: no-repeat;
+    background-position: right 9px center;
+    background-size: 10px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath fill='%23888' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+  }
+  select.status:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  select.status[data-v="Not Applied"] { background-color: var(--status-na-bg); color: var(--status-na-fg); }
+  select.status[data-v="Applied"] { background-color: var(--status-applied-bg); color: var(--status-applied-fg); }
+  select.status[data-v="Interview"] { background-color: var(--status-interview-bg); color: var(--status-interview-fg); }
+  select.status[data-v="Rejected"] { background-color: var(--status-rejected-bg); color: var(--status-rejected-fg); }
+
+  .empty {
+    padding: 36px 16px;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 0.9rem;
+  }
+  .empty .big { font-size: 1.6rem; margin-bottom: 6px; }
+
+  .saved-flash {
+    position: fixed;
+    bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    left: 50%;
+    transform: translateX(-50%) translateY(8px);
+    background: var(--text);
+    color: var(--bg);
+    padding: 8px 16px;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+  }
+  .saved-flash.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  footer { color: var(--text-dim); font-size: 0.76rem; margin-top: 8px; }
+</style>
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap">
+
+<header>
+  <h1>Job Discovery Tracker</h1>
+  <p class="subtitle">Postings the discover-jobs mode found — skill/tool-keyword matched, hard-filtered, never scored here.</p>
+</header>
+
+<div class="stats" id="stats">
+  <div class="stat"><span class="n mono" id="stat-total">0</span><span class="l">Total</span></div>
+  <div class="stat"><span class="n mono" id="stat-na">0</span><span class="l">Not Applied</span></div>
+  <div class="stat"><span class="n mono" id="stat-applied">0</span><span class="l">Applied</span></div>
+  <div class="stat"><span class="n mono" id="stat-interview">0</span><span class="l">Interview</span></div>
+  <div class="stat"><span class="n mono" id="stat-rejected">0</span><span class="l">Rejected</span></div>
+</div>
+
+<section>
+  <div class="section-head">
+    <h2>Postings</h2>
+    <span class="hint">Status is the only editable field — new rows are appended by the discover-jobs mode.</span>
+  </div>
+  <div class="table-wrap">
+    <div class="table-scroll">
+      <table id="postings-table" hidden>
+        <thead>
+          <tr><th>#</th><th>Job Title</th><th>Company</th><th>Fetched</th><th>Status</th></tr>
+        </thead>
+        <tbody id="postings-body"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="postings-empty">
+      <div class="big">🧭</div>
+      No postings yet — the next discover-jobs run will add some here.
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="section-head">
+    <h2>Discovered Sources</h2>
+    <span class="hint">Every job board / career site touched, so none get rediscovered next week.</span>
+  </div>
+  <div class="table-wrap">
+    <div class="table-scroll">
+      <table id="sources-table" hidden>
+        <thead>
+          <tr><th>Source</th><th>Type</th><th>Company</th><th>Roles found</th><th>Verdict</th><th>Notes</th><th>Date</th></tr>
+        </thead>
+        <tbody id="sources-body"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="sources-empty">
+      <div class="big">🗂️</div>
+      No sources logged yet.
+    </div>
+  </div>
+</section>
+
+<footer>Dedup key: (company, job title). New rows never overwrite an existing row's Status.</footer>
+
+<div class="saved-flash" id="flash">Saved</div>
+
+<script>
+(function () {
+  const STATUSES = ["Not Applied", "Applied", "Interview", "Rejected"];
+  const flashEl = document.getElementById("flash");
+  let flashTimer = null;
+  function flash(msg) {
+    flashEl.textContent = msg;
+    flashEl.classList.add("show");
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => flashEl.classList.remove("show"), 1400);
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[c]));
+  }
+
+  function renderStats(docs) {
+    const counts = { "Not Applied": 0, "Applied": 0, "Interview": 0, "Rejected": 0 };
+    for (const d of docs) {
+      const s = d.data().status;
+      if (counts.hasOwnProperty(s)) counts[s]++;
+    }
+    document.getElementById("stat-total").textContent = docs.length;
+    document.getElementById("stat-na").textContent = counts["Not Applied"];
+    document.getElementById("stat-applied").textContent = counts["Applied"];
+    document.getElementById("stat-interview").textContent = counts["Interview"];
+    document.getElementById("stat-rejected").textContent = counts["Rejected"];
+  }
+
+  function renderPostings(snap, db) {
+    const docs = snap.docs.slice().sort((a, b) => (Number(a.data().num) || 0) - (Number(b.data().num) || 0));
+    renderStats(docs);
+    const table = document.getElementById("postings-table");
+    const empty = document.getElementById("postings-empty");
+    const body = document.getElementById("postings-body");
+    if (docs.length === 0) {
+      table.hidden = true;
+      empty.hidden = false;
+      return;
+    }
+    table.hidden = false;
+    empty.hidden = true;
+    body.innerHTML = docs.map((d) => {
+      const p = d.data();
+      const opts = STATUSES.map((s) =>
+        `<option value="${esc(s)}"${s === p.status ? " selected" : ""}>${esc(s)}</option>`
+      ).join("");
+      return `<tr>
+        <td class="num mono">${esc(p.num)}</td>
+        <td>${esc(p.title)}</td>
+        <td class="company">${esc(p.company)}</td>
+        <td class="fetched mono">${esc(p.fetched)}</td>
+        <td><select class="status" id="status-${esc(d.id)}" data-v="${esc(p.status)}" data-doc="${esc(d.id)}">${opts}</select></td>
+      </tr>`;
+    }).join("");
+
+    body.querySelectorAll("select.status").forEach((sel) => {
+      sel.addEventListener("change", async () => {
+        const docId = sel.getAttribute("data-doc");
+        const value = sel.value;
+        sel.disabled = true;
+        try {
+          await db.doc("postings/" + docId).update({ status: value });
+          sel.setAttribute("data-v", value);
+          flash("Saved — " + value);
+        } catch (e) {
+          flash("Couldn't save — try again");
+        } finally {
+          sel.disabled = false;
+        }
+      });
+    });
+  }
+
+  function renderSources(snap) {
+    const docs = snap.docs.slice().sort((a, b) => String(b.data().date || "").localeCompare(String(a.data().date || "")));
+    const table = document.getElementById("sources-table");
+    const empty = document.getElementById("sources-empty");
+    const body = document.getElementById("sources-body");
+    if (docs.length === 0) {
+      table.hidden = true;
+      empty.hidden = false;
+      return;
+    }
+    table.hidden = false;
+    empty.hidden = true;
+    body.innerHTML = docs.map((d) => {
+      const s = d.data();
+      return `<tr>
+        <td>${esc(s.source)}</td>
+        <td>${esc(s.type)}</td>
+        <td class="company">${esc(s.company)}</td>
+        <td class="mono">${esc(s.rolesFound)}</td>
+        <td>${esc(s.verdict)}</td>
+        <td>${esc(s.notes)}</td>
+        <td class="fetched mono">${esc(s.date)}</td>
+      </tr>`;
+    }).join("");
+  }
+
+  async function boot() {
+    const db = await (window.claude && window.claude.use ? window.claude.use("db") : Promise.resolve(null));
+    if (!db) {
+      document.getElementById("postings-empty").innerHTML =
+        '<div class="big">⚠️</div>This view can\'t reach the tracker store right now.';
+      document.getElementById("sources-empty").innerHTML =
+        '<div class="big">⚠️</div>This view can\'t reach the tracker store right now.';
+      return;
+    }
+    db.collection("postings").onSnapshot(
+      (snap) => renderPostings(snap, db),
+      () => flash("Live updates interrupted")
+    );
+    db.collection("sources").onSnapshot(
+      (snap) => renderSources(snap),
+      () => {}
+    );
+  }
+
+  boot();
+})();
+</script>
