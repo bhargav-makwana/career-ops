@@ -10,6 +10,50 @@ titles — and adds genuinely new ones to the hosted tracker. Runs both as a
 7-hourly autonomous cloud routine and as a mode you can invoke manually in an
 interactive session; the same instructions below cover both.
 
+## Step 0: Activity log — write as you go, in plain language
+
+The tracker artifact also holds a live `activity_log` collection the user
+watches from any device while a run is happening. Log a short, plain-English
+entry (no jargon, no tool names, no raw counts dumped without context) via
+`ArtifactData` `set` at each milestone below — not batched at the end, write
+each one the moment it happens, so the log is genuinely real-time:
+
+1. Run started
+2. Keyword set built (name how many keywords, not the tool call)
+3. Search complete (how many candidate postings found)
+4. Filters applied (how many passed, in plain terms — never dump the
+   exclusion list, per the tracker's own "never overwhelm with excluded
+   items" convention)
+5. Dedup complete (how many were genuinely new)
+6. Rows written (or "no new postings this run" — a legitimate, non-error
+   outcome)
+7. Run finished — or, if blocked (e.g. missing `cv.md`/`modes/_profile.md`),
+   one clear entry saying what's missing and that nothing was written
+
+Each entry is one document in collection `activity_log`, fresh `doc_id` (use
+the run's start time in epoch milliseconds plus a small counter, e.g.
+`1758000000000-3`, so entries never collide and sort correctly), fields:
+
+```json
+{
+  "ts_iso": "2026-09-16T07:52:03Z",
+  "ts_berlin": "2026-09-16 09:52 CEST",
+  "ts_berlin_short": "09:52",
+  "message": "Found 14 candidate postings from today's search"
+}
+```
+
+Compute Berlin time with `TZ='Europe/Berlin' date '+%Y-%m-%d %H:%M %Z'`
+(handles CET/CEST automatically) — never hardcode a UTC offset.
+
+**Keep it clean:** one sentence per entry, plain language a non-technical
+reader follows at a glance, newest-first is how the page renders it so don't
+repeat context already implied by the previous entry. After writing, if the
+`activity_log` collection has grown past 200 documents, delete the oldest
+ones back down to 200 (`list` ordered by `ts_iso` ascending, `delete` the
+overflow) — keeps the log itself the size the user actually reads, not an
+unbounded history.
+
 ## Step 1: Build the query keyword set
 
 Read `cv.md`. Extract skill/tool/domain terms actually documented there —

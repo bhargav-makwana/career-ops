@@ -152,6 +152,57 @@
   }
   .empty .big { font-size: 1.6rem; margin-bottom: 6px; }
 
+  .log-list {
+    display: flex;
+    flex-direction: column;
+    max-height: 360px;
+    overflow-y: auto;
+  }
+  .log-row {
+    display: flex;
+    gap: 12px;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.85rem;
+    align-items: baseline;
+  }
+  .log-row:last-child { border-bottom: none; }
+  .log-time {
+    color: var(--text-dim);
+    white-space: nowrap;
+    flex-shrink: 0;
+    width: 11ch;
+  }
+  .log-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--accent);
+    flex-shrink: 0;
+    margin-top: 6px;
+  }
+  .log-row.blocked .log-dot { background: var(--status-rejected-fg); }
+  .log-msg { flex: 1; }
+  .live-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-dim);
+  }
+  .live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--accent);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+
   .saved-flash {
     position: fixed;
     bottom: calc(18px + env(safe-area-inset-bottom, 0px));
@@ -186,6 +237,20 @@
   <div class="stat"><span class="n mono" id="stat-interview">0</span><span class="l">Interview</span></div>
   <div class="stat"><span class="n mono" id="stat-rejected">0</span><span class="l">Rejected</span></div>
 </div>
+
+<section>
+  <div class="section-head">
+    <h2>Activity Log</h2>
+    <span class="live-badge"><span class="live-dot"></span>Live</span>
+  </div>
+  <div class="table-wrap">
+    <div class="log-list" id="log-list" hidden></div>
+    <div class="empty" id="log-empty">
+      <div class="big">📝</div>
+      No runs logged yet — the next discover-jobs run will report here as it works.
+    </div>
+  </div>
+</section>
 
 <section>
   <div class="section-head">
@@ -309,6 +374,28 @@
     });
   }
 
+  function renderLog(snap) {
+    const docs = snap.docs.slice().sort((a, b) => String(b.data().ts_iso || "").localeCompare(String(a.data().ts_iso || "")));
+    const list = document.getElementById("log-list");
+    const empty = document.getElementById("log-empty");
+    if (docs.length === 0) {
+      list.hidden = true;
+      empty.hidden = false;
+      return;
+    }
+    list.hidden = false;
+    empty.hidden = true;
+    list.innerHTML = docs.map((d) => {
+      const l = d.data();
+      const blocked = /blocked|error|couldn.t|could not/i.test(l.message || "");
+      return `<div class="log-row${blocked ? " blocked" : ""}">
+        <span class="log-dot"></span>
+        <span class="log-time mono">${esc(l.ts_berlin_short || l.ts_berlin || "")}</span>
+        <span class="log-msg">${esc(l.message)}</span>
+      </div>`;
+    }).join("");
+  }
+
   function renderSources(snap) {
     const docs = snap.docs.slice().sort((a, b) => String(b.data().date || "").localeCompare(String(a.data().date || "")));
     const table = document.getElementById("sources-table");
@@ -338,12 +425,18 @@
   async function boot() {
     const db = await (window.claude && window.claude.use ? window.claude.use("db") : Promise.resolve(null));
     if (!db) {
+      document.getElementById("log-empty").innerHTML =
+        '<div class="big">⚠️</div>This view can\'t reach the tracker store right now.';
       document.getElementById("postings-empty").innerHTML =
         '<div class="big">⚠️</div>This view can\'t reach the tracker store right now.';
       document.getElementById("sources-empty").innerHTML =
         '<div class="big">⚠️</div>This view can\'t reach the tracker store right now.';
       return;
     }
+    db.collection("activity_log").onSnapshot(
+      (snap) => renderLog(snap),
+      () => {}
+    );
     db.collection("postings").onSnapshot(
       (snap) => renderPostings(snap, db),
       () => flash("Live updates interrupted")
