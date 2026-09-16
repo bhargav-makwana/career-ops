@@ -68,8 +68,11 @@ Check which search tool is available in the current session:
 - **Otherwise** (true in the cloud routine, which has no Nimble connector):
   use the built-in WebSearch tool, once per keyword or small keyword group
   (e.g. `"SAP MDG" OR "SAP S/4HANA" jobs Germany site:stepstone.de`,
-  `SQL "data quality" Berlin jobs`), and merge/dedupe the results yourself
-  within this run.
+  `SQL "data quality" jobs Germany remote`), and merge/dedupe the results
+  yourself within this run. Vary the location term across queries too —
+  Berlin, Germany-wide, "remote Germany", "EU remote" — per
+  `modes/_profile.md`'s Location Policy, none of these is preferred over
+  another, so don't default every query to "Berlin".
 
 **Target: 10 genuinely new (post-filter, post-dedup) qualifying postings per
 run — keep searching until you reach it, not just one shallow pass.** Vary
