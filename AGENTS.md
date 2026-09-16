@@ -18,7 +18,7 @@ There are two layers. Read `DATA_CONTRACT.md` for the full list.
 
 **System Layer (auto-updatable, DON'T put user data here):**
 - `modes/_shared.md`, `modes/oferta.md`, all other modes
-- `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, `OPENCODE.md`, `*.mjs` scripts, `dashboard/*`, `templates/*`, `batch/*`
+- `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, `*.mjs` scripts, `dashboard/*`, `templates/*`, `batch/*`
 
 **THE RULE: When the user asks to customize anything (archetypes, narrative, negotiation scripts, proof points, location policy, comp targets), ALWAYS write to `modes/_profile.md` or `config/profile.yml`. NEVER edit `modes/_shared.md` for user-specific content.** This ensures system updates don't overwrite their customizations.
 
@@ -82,7 +82,7 @@ To rollback: `node update-system.mjs rollback`
 
 ## What is career-ops
 
-AI-powered, CLI-agnostic job search automation: pipeline tracking, offer evaluation, CV generation, portal scanning, batch processing. Runs on any AI coding CLI that follows the [open agent skill standard](https://agentskills.io) (Claude Code, Codex, OpenCode, Qwen, Copilot, Kimi, Antigravity CLI, Grok Build CLI). Legacy Gemini API evaluation remains available through `gemini-eval.mjs`.
+AI-powered, CLI-agnostic job search automation: pipeline tracking, offer evaluation, CV generation, portal scanning, batch processing. Runs on any AI coding CLI that follows the [open agent skill standard](https://agentskills.io) (Claude Code, Codex, Qwen, Copilot, Kimi, Antigravity CLI, Grok Build CLI). Legacy Gemini API evaluation remains available through `gemini-eval.mjs`.
 
 ### Codex invocation
 
@@ -117,7 +117,13 @@ AI-powered, CLI-agnostic job search automation: pipeline tracking, offer evaluat
 | `salary-gap.mjs` | Desired/advertised/actual compensation gap analyzer — folds report `advertised_comp` + `data/salary-observations.tsv` (JSON or `--summary`) |
 | `data/salary-observations.tsv` | Append-only salary observation log (user layer) |
 | `data/follow-ups.md` | Follow-up history tracker |
-| `scan.mjs` | Zero-token portal scanner — hits Greenhouse/Ashby/Lever APIs directly, zero LLM cost |
+| `modes/discover-jobs.md` | Skill/tool-keyword-based (never title-based) job discovery — run every 7h by an autonomous cloud routine (WebSearch) and available for manual local runs (Nimble Web Search Agent). Writes to the hosted tracker (Google Sheet — see `docs/superpowers/specs/2026-09-15-skill-based-job-discovery-design.md`). |
+| `scan.mjs` | **Retired 2026-09-15** (title-based matching; superseded by `discover-jobs` mode) — script left in repo, scheduled task removed, no longer invoked |
+| `data/job-board-registry.json` | Persistent registry of discovered job boards (name/domain/type/priority/language coverage) — written by `discover-boards` mode, seeded with LinkedIn/StepStone/XING/Bundesagentur für Arbeit/Indeed/Glassdoor/Honeypot |
+| `data/discover-boards-daily-prompt.txt` | Bounded, non-interactive `discover-boards` "Direct Search Mode" prompt for `claude -p` — searches the top registry boards, appends real finds to `data/pipeline.md`. Works run directly (`type data\discover-boards-daily-prompt.txt \| claude -p --dangerously-skip-permissions --strict-mcp-config`); NOT wired into the daily scheduled task — `claude -p` crashes instantly when launched by Windows Task Scheduler on this machine (session/desktop-attachment quirk), so run it yourself when you want to widen the candidate pool beyond `scan.mjs`'s zero-token reach. |
+| `excel-tracker.mjs` | **Retired 2026-09-15** — `Job-Tracker.xlsx` no longer exists; superseded by the hosted tracker the `discover-jobs` mode writes to. Script and `npm run excel-tracker` left in repo, `CareerOps-ExcelTracker` scheduled task disabled. |
+| `crawl-englishjobs.mjs` | **Retired 2026-09-15** — superseded by the `discover-jobs` mode's skill-keyword search. Script left in repo, `CareerOps-EnglishJobsCrawl` scheduled task disabled. |
+| `data/englishjobs-keyword-stats.json` | Auto-maintained by `crawl-englishjobs.mjs` — per-keyword cumulative results/relevant/new counts across real runs. Drives search order (most relevant hits first) and auto-discard (a keyword with 3+ runs and zero relevant hits ever gets `discarded: true` and is skipped on every future run, no request spent). Flip `discarded` back to `false` by hand to reinstate one. |
 | `check-liveness.mjs` | Job posting liveness checker |
 | `liveness-core.mjs` | Shared liveness logic (expired signals win over generic Apply text) |
 | `reports/` | Evaluation reports (format: `{###}-{company-slug}-{YYYY-MM-DD}.md`). Blocks A-F + G (Posting Legitimacy). Header includes `**Legitimacy:** {tier}`. |
@@ -172,7 +178,8 @@ Default modes are in `modes/` (English). Additional language-specific modes exis
 | Evaluates portfolio project | `project` |
 | Asks about application status | `tracker` |
 | Fills out application form | `apply` |
-| Searches for new offers | `scan` |
+| Searches for new offers | `discover-jobs` |
+| Wants a broad CV-driven job search, or to find NEW job boards beyond the tracked portals | `discover-boards` — CV-driven bilingual (EN/DE) query generation, Google/Nimble discovery of job-board domains, persistent `data/job-board-registry.json`, and a direct-search mode against known boards once the registry matures |
 | Processes pending URLs | `pipeline` |
 | Batch processes offers | `batch` |
 | Asks about rejection patterns, wants to improve targeting, or wants to match interview answers to best-fit roles | `patterns` |
@@ -204,12 +211,14 @@ Default modes are in `modes/` (English). Additional language-specific modes exis
 
 ## Offer Verification -- MANDATORY
 
-**NEVER trust WebSearch/WebFetch to verify if an offer is still active.** ALWAYS use Playwright:
-1. `browser_navigate` to the URL
-2. `browser_snapshot` to read content
-3. Only footer/navbar without JD = closed. Title + description + Apply = active.
+Verify a posting is still live before applying — using the cheapest check that works (a false "expired" is worse than a slow check: it makes the user miss a real job):
 
-**Exception for batch workers (headless mode):** Playwright is not available in headless pipe mode. Use WebFetch as fallback and mark the report header with `**Verification:** unconfirmed (batch mode)`. The user can verify manually later.
+1. **ATS-hosted postings (Greenhouse, Lever, ...) — API first, zero tokens:** run `node check-liveness.mjs <url>`. It hits the posting's public ATS JSON API directly (no browser, no tokens) and reports `active`/`expired`, falling back to a browser only when the API is inconclusive. A definitive `expired` from the API is authoritative.
+2. **Non-ATS pages, or when the API is inconclusive — Playwright:** `browser_navigate` to the URL + `browser_snapshot`. Only footer/navbar without JD = closed; title + description + Apply = active.
+
+**NEVER decide liveness from a bare WebSearch/WebFetch snippet** — use `check-liveness.mjs` (which does the API rung) or Playwright.
+
+**Exception for batch workers (`claude -p`):** Playwright is unavailable in headless pipe mode. The API rung above still works for ATS postings; for non-ATS pages use WebFetch as a fallback and mark the report header `**Verification:** unconfirmed (batch mode)`.
 
 ---
 
@@ -224,7 +233,6 @@ When spawning headless workers for batch processing, use the appropriate command
 | CLI | Command |
 |-----|---------|
 | Claude Code | `claude -p "prompt"` |
-| **OpenCode** | `opencode run "prompt"` |
 | Copilot CLI | `copilot -p "prompt"` |
 | Codex | `codex exec "prompt"` |
 | Qwen | `qwen -p "prompt"` |
