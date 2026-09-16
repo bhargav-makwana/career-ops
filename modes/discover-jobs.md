@@ -181,9 +181,26 @@ application progresses; this mode only ever writes `Not Applied`, never the
 other three, and never `set`s over an existing `doc_id` (that would be an
 overwrite, not an append — Step 4's dedup check is what prevents this).
 
-Log every job board / career site touched this run to the same artifact's
-`sources` collection the same way (`set` with a fresh `doc_id`): fields
-`source`, `type`, `company`, `rolesFound`, `verdict`, `notes`, `date`.
+**`sources` collection — one row per domain, upserted, not appended.** This
+tracks which keyword searches actually found relevant postings on which
+site, so future runs search those first instead of re-exploring blindly.
+`doc_id` is the domain itself (e.g. `"stepstone.de"`, not a per-run id).
+Fields: `sourceUrl` (the domain's URL, as a real link — this renders as the
+clickable Source column), `type` (e.g. `"job board"`), `effectiveKeywords`
+(array of the exact query strings that found a posting which passed Step 3's
+filters on that domain — not every query tried, only the ones that worked).
+
+At the end of a run: for each domain you searched, `get` its existing doc
+(if any). If a query on that domain found a filter-passing posting this run,
+merge it into `effectiveKeywords` (dedup, keep the array reasonably short —
+~10 max, drop the oldest if it grows past that) and `set` the merged doc. A
+domain that found nothing this run needs no write at all — don't create or
+touch a doc just to record a null result.
+
+**Step 2 reads this collection first.** Before improvising new queries, `get`
+the `sources` collection and re-run any domain's recorded `effectiveKeywords`
+— they're known to work, so they're the cheapest way to make progress toward
+the 10-posting target before spending searches on new combinations.
 
 ## Out of scope for this mode
 
