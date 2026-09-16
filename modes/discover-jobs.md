@@ -117,6 +117,12 @@ now, don't rely on a cached summary):
 - **Your Language Policy (HARD FILTER)** — English working language required;
   German-fluency requirement → exclude; all-German posting with zero language
   signal → exclude.
+- **Your Location Policy (HARD FILTER)** — must land in one of the 4 accepted
+  tiers (Berlin any arrangement / Germany Remote, North/NE Germany hybrid or
+  remote, EU Remote, hybrid elsewhere in Germany). Fully on-site outside
+  Berlin with no remote/hybrid option, on-site outside a practical commute,
+  or outside the EU entirely → exclude. (Corrected 2026-09-16 — this is a
+  real cutoff, not just a ranking signal.)
 - **Your Company Policy** — no company-category exclusion (changed
   2026-09-16: consulting/IT-services/staffing firms are evaluated like any
   other company now). Only the Language Policy above can exclude one of
