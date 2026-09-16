@@ -64,27 +64,48 @@ to exclude, not a reason to include.
 
 ## Step 4: Dedup against the existing tracker
 
-Read the current tracker (see Step 5 for which one). Before adding a
-candidate, check whether a row with the same **(company, job title)** pair
-already exists (case-insensitive, whitespace-normalized). If it does, skip it
-— do not add a duplicate row, and do not touch that row's existing Status.
+Read the current tracker (see Step 5). Before adding a candidate, check
+whether a document with the same **(company, job title)** pair already exists
+(case-insensitive, whitespace-normalized). If it does, skip it — do not add a
+duplicate row, and do not touch that row's existing Status.
 
 ## Step 5: Write new rows to the hosted tracker
 
-The tracker is a Google Sheet (`TRACKER_MODE=sheet`, confirmed 2026-09-16 —
-the Google Drive/Sheets connector is routine-usable). For each genuinely new,
-filtered, deduped candidate, append one row:
+The tracker is the Artifact-hosted page at
+**https://claude.ai/artifact/X4QZdiqn9kecJrezmrmyoE** (`TRACKER_MODE=artifact`,
+decided 2026-09-16 — the Google Drive connector available in this environment
+is Drive file-management only, with no Sheets values API for row-level
+appends, so the Sheet branch isn't viable; see
+`docs/superpowers/specs/2026-09-15-skill-based-job-discovery-design.md`).
 
-| Column | Value |
-|--------|-------|
-| # | next sequential integer (max existing + 1) |
-| Job Title | as posted |
-| Company | as posted (or `?` if genuinely undisclosed/agency-sourced, matching this repo's existing convention) |
-| Fetched | current date/time, ISO-ish, e.g. `2026-09-15 21:40 CEST` |
-| Status | `Not Applied` (always, for a new row) |
+Use the `ArtifactData` tool (`ToolSearch select:ArtifactData` if not already
+loaded) against that URL, collection `postings`:
 
-Never overwrite an existing row's Status. Never re-add a row that already
-exists by the dedup key in Step 4.
+1. `action: "list"` (or `"query"`) on `postings` to read existing rows for the
+   Step 4 dedup check.
+2. For each genuinely new, filtered, deduped candidate, `action: "set"` with
+   a fresh `doc_id` (the next sequential integer, e.g. `"7"`, as a string —
+   max existing `num` + 1) and `data`:
+
+```json
+{
+  "num": 7,
+  "title": "as posted",
+  "company": "as posted (or \"?\" if genuinely undisclosed/agency-sourced)",
+  "fetched": "2026-09-15 21:40 CEST",
+  "status": "Not Applied"
+}
+```
+
+`status` holds exactly 4 values: `Not Applied`, `Applied`, `Interview`,
+`Rejected` — the user changes the latter three by hand in the page's UI as an
+application progresses; this mode only ever writes `Not Applied`, never the
+other three, and never `set`s over an existing `doc_id` (that would be an
+overwrite, not an append — Step 4's dedup check is what prevents this).
+
+Log every job board / career site touched this run to the same artifact's
+`sources` collection the same way (`set` with a fresh `doc_id`): fields
+`source`, `type`, `company`, `rolesFound`, `verdict`, `notes`, `date`.
 
 ## Out of scope for this mode
 
